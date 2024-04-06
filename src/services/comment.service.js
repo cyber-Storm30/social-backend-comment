@@ -1,6 +1,7 @@
 import CommentModel from "../models/comment.model.js";
 import axios from "axios";
 import { BASE_URL } from "../config/connection.js";
+import kafka from "../config/kafkaClient.js";
 
 class CommentService {
   async createPostComment(payload) {
@@ -11,7 +12,6 @@ class CommentService {
         commentId: comment._id,
         postId: payload.postId,
       });
-      console.log("response", response);
       const userResponse = await axios.get(
         `${BASE_URL}/auth/user/${comment.userId}`
       );
@@ -62,6 +62,26 @@ class CommentService {
       }
       if (!comment.likes.includes(userId)) {
         await comment.updateOne({ $push: { likes: userId } });
+        const producer = kafka.producer();
+
+        await producer.connect();
+
+        await producer.send({
+          topic: "notifications",
+          messages: [
+            {
+              partition: 0,
+              key: "notification-update",
+              value: JSON.stringify({
+                type: "LIKE COMMENT",
+                commentId,
+                userId,
+              }),
+            },
+          ],
+        });
+
+        await producer.disconnect();
         return {
           success: true,
           data: "LIKED",
